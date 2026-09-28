@@ -227,6 +227,25 @@
         "label": "Rescan",
         "tooltip": "Rescan for models added to the models folder or Hugging Face cache outside Handy"
       },
+      "huggingface": {
+        "button": "Hugging Face",
+        "modalTitle": "Download Model from Hugging Face",
+        "modalDescription": "Enter a Hugging Face model URL or repository identifier to download and use with Handy.",
+        "inputLabel": "Hugging Face Model Link or Repo ID",
+        "inputPlaceholder": "e.g. openai/whisper-large-v3-turbo or https://huggingface.co/...",
+        "hint": "Supports full repository URLs, direct file links, or short IDs (e.g. ggerganov/whisper.cpp/ggml-base.bin).",
+        "inspect": "Inspect",
+        "inspecting": "Inspecting...",
+        "selectFile": "Select Model File",
+        "chooseFile": "Choose a model file...",
+        "noFilesFound": "No compatible GGUF or GGML model files found in this repository.",
+        "download": "Download",
+        "downloading": "Starting...",
+        "downloadStarted": "Started downloading {{filename}}",
+        "downloadFailed": "Failed to start downloading model",
+        "invalidUrl": "Please enter a valid Hugging Face URL or repository ID.",
+        "error": "Failed to inspect model repository"
+      },
       "noModelsMatch": "No models match this filter."
     },
     "sound": {

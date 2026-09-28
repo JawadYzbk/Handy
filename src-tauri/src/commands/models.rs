@@ -1,9 +1,42 @@
-use crate::managers::model::{ModelInfo, ModelManager};
+use crate::managers::model::{HfRepoInfo, ModelInfo, ModelManager};
 use crate::managers::transcription::{ModelStateEvent, TranscriptionManager};
 use crate::settings::{get_settings, write_settings, ModelUnloadTimeout};
 use log::error;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
+
+#[tauri::command]
+#[specta::specta]
+pub async fn inspect_huggingface_url(url: String) -> Result<HfRepoInfo, String> {
+    crate::managers::model::inspect_hf_url(&url).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn download_huggingface_model(
+    app_handle: AppHandle,
+    model_manager: State<'_, Arc<ModelManager>>,
+    repo_id: String,
+    revision: Option<String>,
+    filename: String,
+) -> Result<String, String> {
+    let revision = revision.unwrap_or_else(|| "main".to_string());
+    let result = model_manager
+        .register_and_download_hf_model(&repo_id, &revision, &filename)
+        .await
+        .map_err(|e| e.to_string());
+
+    if let Err(ref error) = result {
+        let model_id = format!("{}/{}", repo_id, filename);
+        error!("Hugging Face model download failed for {}: {}", model_id, error);
+        let _ = app_handle.emit(
+            "model-download-failed",
+            serde_json::json!({ "model_id": &model_id, "error": error }),
+        );
+    }
+
+    result
+}
 
 #[tauri::command]
 #[specta::specta]

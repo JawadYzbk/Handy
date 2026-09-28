@@ -729,6 +729,8 @@ pub fn run(cli_args: CliArgs) {
             commands::models::get_available_models,
             commands::models::get_model_info,
             commands::models::download_model,
+            commands::models::inspect_huggingface_url,
+            commands::models::download_huggingface_model,
             commands::models::delete_model,
             commands::models::cancel_download,
             commands::models::set_active_model,

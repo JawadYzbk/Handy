@@ -20,8 +20,11 @@ use tar::Archive;
 use tauri::{AppHandle, Emitter, Manager};
 
 mod download;
+pub mod hf_link;
 
 use download::{HttpDownloadOutcome, DOWNLOAD_STALL_TIMEOUT};
+#[allow(unused_imports)]
+pub use hf_link::{inspect_hf_url, HfModelFile, HfRepoInfo};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub enum EngineType {
@@ -1796,7 +1799,9 @@ impl ModelManager {
 
             for file in files.flatten() {
                 let fname = file.file_name().to_string_lossy().to_string();
-                if !fname.ends_with(".gguf") {
+                let is_gguf = fname.ends_with(".gguf");
+                let is_bin = fname.ends_with(".bin");
+                if !is_gguf && !is_bin {
                     continue;
                 }
                 if known_hf.contains(&(repo_id.clone(), fname.clone())) {
@@ -1830,9 +1835,13 @@ impl ModelManager {
                 }
 
                 let path = snapshot.join(&fname);
-                let probe = prober.probe_file(&path);
-                // Only surface models transcribe-cpp recognises.
-                if probe.verdict != Compatibility::Compatible {
+                let probe = if is_gguf {
+                    prober.probe_file(&path)
+                } else {
+                    CapabilityProbe::default()
+                };
+                // Only surface GGUF models transcribe-cpp recognises.
+                if is_gguf && probe.verdict != Compatibility::Compatible {
                     continue;
                 }
                 let caps = local_caps(&probe);
@@ -1841,8 +1850,12 @@ impl ModelManager {
                     .metadata()
                     .map(|m| m.len() / (1024 * 1024))
                     .unwrap_or(0);
-                let display = probed_display_name(&probe)
-                    .unwrap_or_else(|| fname.trim_end_matches(".gguf").to_string());
+                let display = probed_display_name(&probe).unwrap_or_else(|| {
+                    fname
+                        .trim_end_matches(".gguf")
+                        .trim_end_matches(".bin")
+                        .replace(['-', '_'], " ")
+                });
 
                 info!("Discovered HF cache model: {} ({})", model_id, repo_id);
                 available_models.insert(
@@ -2147,9 +2160,32 @@ impl ModelManager {
         }
 
         cleanup.disarmed = true;
+        if let Some(path) = hf_cached_path(&repo_id, &revision, &filename) {
+            let is_gguf = filename.ends_with(".gguf");
+            let probe = if is_gguf {
+                GgufHeaderProber.probe_file(&path)
+            } else {
+                CapabilityProbe::default()
+            };
+            let caps = local_caps(&probe);
+            let size_mb = path.metadata().map(|m| m.len() / (1024 * 1024)).unwrap_or(0);
+            let mut models = self.available_models.lock().unwrap();
+            if let Some(model) = models.get_mut(&model_id) {
+                if let Some(display) = probed_display_name(&probe) {
+                    model.name = display;
+                }
+                model.size_mb = size_mb;
+                model.supports_streaming = caps.supports_streaming;
+                model.supports_translation = caps.supports_translation;
+                model.supports_language_detection = caps.supports_language_detection;
+                model.supports_language_selection = caps.supports_language_selection;
+                model.supported_languages = caps.supported_languages;
+            }
+        }
         self.update_download_status()?;
         self.cancel_flags.lock().unwrap().remove(&model_id);
         let _ = self.app_handle.emit("model-download-complete", &model_id);
+        let _ = self.app_handle.emit("models-updated", ());
         info!("HF model {} downloaded", model_id);
         Ok(())
     }
@@ -2193,6 +2229,66 @@ impl ModelManager {
                 Ok(true)
             }
         }
+    }
+
+    pub async fn register_and_download_hf_model(
+        &self,
+        repo_id: &str,
+        revision: &str,
+        filename: &str,
+    ) -> Result<String> {
+        let model_id = format!("{}/{}", repo_id, filename);
+
+        let existing = {
+            let models = self.available_models.lock().unwrap();
+            models.get(&model_id).cloned()
+        };
+
+        if let Some(existing_model) = existing {
+            if existing_model.is_downloaded {
+                return Ok(model_id);
+            }
+        } else {
+            let display_name = format!(
+                "{} ({})",
+                repo_id.split('/').nth(1).unwrap_or(repo_id),
+                filename
+            );
+            let model_info = ModelInfo {
+                id: model_id.clone(),
+                name: display_name,
+                description: format!("Hugging Face: {}", repo_id),
+                filename: filename.to_string(),
+                source: ModelSource::HuggingFace {
+                    repo_id: repo_id.to_string(),
+                    revision: revision.to_string(),
+                },
+                size_mb: 0,
+                is_downloaded: false,
+                is_downloading: true,
+                partial_size: 0,
+                is_directory: false,
+                engine_type: EngineType::TranscribeCpp,
+                accuracy_score: 0.0,
+                speed_score: 0.0,
+                supports_translation: false,
+                is_recommended: false,
+                supported_languages: Vec::new(),
+                supports_language_selection: false,
+                is_custom: true,
+                supports_streaming: false,
+                supports_language_detection: false,
+            };
+
+            self.available_models
+                .lock()
+                .unwrap()
+                .insert(model_id.clone(), model_info);
+            let _ = self.app_handle.emit("models-updated", ());
+        }
+
+        self.download_model(&model_id).await?;
+        Ok(model_id)
     }
 
     pub async fn download_model(&self, model_id: &str) -> Result<()> {

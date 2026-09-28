@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { produce } from "immer";
 import { listen } from "@tauri-apps/api/event";
-import { commands, type ModelInfo } from "@/bindings";
+import { commands, type ModelInfo, type HfRepoInfo } from "@/bindings";
 import { toast } from "sonner";
 
 interface DownloadProgress {
@@ -40,6 +40,12 @@ interface ModelsStore {
   rescanLocalModels: () => Promise<void>;
   selectModel: (modelId: string) => Promise<boolean>;
   downloadModel: (modelId: string) => Promise<boolean>;
+  inspectHuggingFaceUrl: (url: string) => Promise<HfRepoInfo>;
+  downloadHuggingFaceModel: (
+    repoId: string,
+    revision: string | null,
+    filename: string,
+  ) => Promise<boolean>;
   cancelDownload: (modelId: string) => Promise<boolean>;
   deleteModel: (modelId: string) => Promise<boolean>;
   getModelInfo: (modelId: string) => ModelInfo | undefined;
@@ -190,6 +196,62 @@ export const useModelStore = create<ModelsStore>()(
       } catch {
         // model-download-failed event won't fire for JS exceptions (e.g. IPC error),
         // so clean up state here to avoid a stuck progress spinner.
+        set(
+          produce((state) => {
+            delete state.downloadingModels[modelId];
+            delete state.downloadProgress[modelId];
+            delete state.downloadStats[modelId];
+          }),
+        );
+        return false;
+      }
+    },
+
+    inspectHuggingFaceUrl: async (url: string) => {
+      const result = await commands.inspectHuggingfaceUrl(url);
+      if (result.status === "ok") {
+        return result.data;
+      } else {
+        throw new Error(result.error);
+      }
+    },
+
+    downloadHuggingFaceModel: async (
+      repoId: string,
+      revision: string | null,
+      filename: string,
+    ) => {
+      const modelId = `${repoId}/${filename}`;
+      try {
+        set({ error: null });
+        set(
+          produce((state) => {
+            state.downloadingModels[modelId] = true;
+            state.downloadProgress[modelId] = {
+              model_id: modelId,
+              downloaded: 0,
+              total: 0,
+              percentage: 0,
+            };
+          }),
+        );
+        const result = await commands.downloadHuggingfaceModel(
+          repoId,
+          revision,
+          filename,
+        );
+        if (result.status !== "ok") {
+          set(
+            produce((state) => {
+              delete state.downloadingModels[modelId];
+              delete state.downloadProgress[modelId];
+              delete state.downloadStats[modelId];
+            }),
+          );
+        }
+        await get().loadModels();
+        return result.status === "ok";
+      } catch {
         set(
           produce((state) => {
             delete state.downloadingModels[modelId];

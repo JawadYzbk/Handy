@@ -4,6 +4,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import {
   AudioLines,
   ChevronDown,
+  Download,
   Globe,
   Languages,
   RefreshCw,
@@ -11,6 +12,7 @@ import {
 } from "lucide-react";
 import type { ModelCardStatus } from "@/components/onboarding";
 import { ModelCard } from "@/components/onboarding";
+import { HuggingFaceDownloadModal } from "./HuggingFaceDownloadModal";
 import { useModelStore } from "@/stores/modelStore";
 import {
   getLanguageLabel,
@@ -34,6 +36,7 @@ export const ModelsSettings: React.FC = () => {
   const { t } = useTranslation();
   const [switchingModelId, setSwitchingModelId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [hfModalOpen, setHfModalOpen] = useState(false);
   const [filterStreaming, setFilterStreaming] = useState(false);
   const [filterTranslation, setFilterTranslation] = useState(false);
   const [languageFilter, setLanguageFilter] = useState("all");
@@ -268,6 +271,18 @@ export const ModelsSettings: React.FC = () => {
               {t("settings.models.yourModels")}
             </h2>
             <div className="flex items-center gap-2">
+              {/* Download from Hugging Face */}
+              <button
+                type="button"
+                onClick={() => setHfModalOpen(true)}
+                title={t("settings.models.huggingface.button")}
+                aria-label={t("settings.models.huggingface.button")}
+                className="flex items-center gap-1.5 h-8 px-2.5 text-xs font-medium rounded-lg bg-mid-gray/10 text-text/80 hover:bg-logo-primary/20 hover:text-logo-primary transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{t("settings.models.huggingface.button")}</span>
+              </button>
+
               {/* Rescan local sources for models added outside Handy */}
               <button
                 type="button"
@@ -450,6 +465,11 @@ export const ModelsSettings: React.FC = () => {
           </div>
         )}
       </div>
+
+      <HuggingFaceDownloadModal
+        open={hfModalOpen}
+        onOpenChange={setHfModalOpen}
+      />
     </div>
   );
 };

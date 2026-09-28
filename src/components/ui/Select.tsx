@@ -117,6 +117,10 @@ const selectStyles: StylesConfig<SelectOption, false> = {
     ...base,
     color: "color-mix(in srgb, var(--color-mid-gray) 65%, transparent)",
   }),
+  menuPortal: (base) => ({
+    ...base,
+    zIndex: 99999,
+  }),
 };
 
 export const Select: React.FC<SelectProps> = React.memo(
@@ -160,6 +164,9 @@ export const Select: React.FC<SelectProps> = React.memo(
       onBlur,
       isClearable,
       styles: selectStyles,
+      menuPortalTarget: typeof document !== "undefined" ? document.body : undefined,
+      menuPosition: "fixed",
+      menuPlacement: "auto",
     };
 
     if (isCreatable) {
